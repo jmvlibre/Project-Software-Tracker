@@ -248,7 +248,7 @@ async function serveStatic(req, res) {
 async function appHandler(req, res) {
   try {
     if (req.url.startsWith("/api/")) {
-      if (process.env.VERCEL && await handleServerlessApi(req, res)) return;
+      if (await handleServerlessApi(req, res)) return;
       await handleApi(req, res);
       return;
     }
