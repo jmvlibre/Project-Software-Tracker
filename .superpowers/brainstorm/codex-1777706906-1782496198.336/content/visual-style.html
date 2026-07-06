@@ -1,0 +1,105 @@
+<h2>Choose The Enterprise UI Direction</h2>
+<p class="subtitle">Pick the direction that best matches what you mean by "inspired like Jira or SAP" for this project management app.</p>
+
+<div class="cards">
+  <div class="card" data-choice="jira" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="height:230px;background:#f4f5f7;border:1px solid #dfe1e6;border-radius:8px;display:grid;grid-template-columns:58px 1fr;overflow:hidden;font-family:Arial,sans-serif;color:#172b4d">
+        <div style="background:#0747a6;display:grid;gap:14px;align-content:start;justify-items:center;padding:16px 0">
+          <div style="width:28px;height:28px;border-radius:6px;background:#deebff"></div>
+          <div style="width:24px;height:24px;border-radius:4px;background:#4c9aff"></div>
+          <div style="width:24px;height:24px;border-radius:4px;background:#2684ff"></div>
+          <div style="width:24px;height:24px;border-radius:4px;background:#ffffff33"></div>
+        </div>
+        <div style="display:grid;grid-template-rows:48px 1fr">
+          <div style="background:#fff;border-bottom:1px solid #dfe1e6;display:flex;align-items:center;justify-content:space-between;padding:0 18px">
+            <strong>Project Board</strong>
+            <div style="display:flex;gap:8px"><span style="width:86px;height:28px;border-radius:4px;background:#ebecf0"></span><span style="width:76px;height:28px;border-radius:4px;background:#0052cc"></span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:14px">
+            <div style="background:#ebecf0;border-radius:6px;padding:10px"><b style="font-size:12px">To Do</b><div style="height:52px;background:#fff;border-radius:4px;margin-top:10px"></div><div style="height:44px;background:#fff;border-radius:4px;margin-top:8px"></div></div>
+            <div style="background:#ebecf0;border-radius:6px;padding:10px"><b style="font-size:12px">In Progress</b><div style="height:64px;background:#fff;border-left:4px solid #ffab00;border-radius:4px;margin-top:10px"></div></div>
+            <div style="background:#ebecf0;border-radius:6px;padding:10px"><b style="font-size:12px">Done</b><div style="height:52px;background:#fff;border-left:4px solid #36b37e;border-radius:4px;margin-top:10px"></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Jira-Leaning</h3>
+      <p>Best if you want a task-first app: compact navigation, strong blue actions, status chips, board/table density, and quick scanning.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="sap" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="height:230px;background:#f7f7f7;border:1px solid #d9d9d9;border-radius:8px;display:grid;grid-template-rows:48px 1fr;font-family:Arial,sans-serif;color:#223548;overflow:hidden">
+        <div style="background:#354a5f;color:white;display:flex;align-items:center;justify-content:space-between;padding:0 18px">
+          <strong>Project Workspace</strong>
+          <div style="display:flex;gap:10px;align-items:center"><span style="width:120px;height:26px;border-radius:4px;background:#ffffff22"></span><span style="width:28px;height:28px;border-radius:50%;background:#0a6ed1"></span></div>
+        </div>
+        <div style="display:grid;grid-template-columns:210px 1fr;gap:18px;padding:18px">
+          <div style="background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:14px;display:grid;gap:10px;align-content:start">
+            <div style="height:28px;background:#f5f6f7;border-radius:3px"></div>
+            <div style="height:28px;background:#eaf3fc;border-left:3px solid #0a6ed1;border-radius:3px"></div>
+            <div style="height:28px;background:#f5f6f7;border-radius:3px"></div>
+            <div style="height:28px;background:#f5f6f7;border-radius:3px"></div>
+          </div>
+          <div style="display:grid;grid-template-rows:70px 1fr;gap:14px">
+            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+              <div style="background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:10px"><small>Status</small><div style="height:22px;background:#0a6ed1;margin-top:10px;width:52%"></div></div>
+              <div style="background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:10px"><small>Testing</small><div style="height:22px;background:#107e3e;margin-top:10px;width:42%"></div></div>
+              <div style="background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:10px"><small>Pending</small><div style="height:22px;background:#e9730c;margin-top:10px;width:48%"></div></div>
+              <div style="background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:10px"><small>Health</small><div style="height:22px;background:#8396a8;margin-top:10px;width:36%"></div></div>
+            </div>
+            <div style="background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:12px">
+              <div style="height:28px;background:#f5f6f7;border-radius:3px;margin-bottom:10px"></div>
+              <div style="height:16px;background:#edf0f2;margin:8px 0"></div>
+              <div style="height:16px;background:#edf0f2;margin:8px 0;width:92%"></div>
+              <div style="height:16px;background:#edf0f2;margin:8px 0;width:88%"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>SAP Fiori-Leaning</h3>
+      <p>Best if you want enterprise administration: shell bar, quiet tiles, formal tables/forms, restrained colors, and predictable workflows.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="card-image">
+      <div style="height:230px;background:#f6f8fb;border:1px solid #d8dee8;border-radius:8px;display:grid;grid-template-columns:238px 1fr;font-family:Arial,sans-serif;color:#1f2937;overflow:hidden">
+        <div style="background:#102a43;color:white;padding:16px;display:grid;align-content:start;gap:14px">
+          <div style="display:flex;gap:10px;align-items:center"><span style="width:32px;height:32px;border-radius:6px;background:#2f80ed"></span><strong>PM Hub</strong></div>
+          <div style="height:34px;border-radius:5px;background:#ffffff18"></div>
+          <div style="height:34px;border-radius:5px;background:#2f80ed"></div>
+          <div style="height:34px;border-radius:5px;background:#ffffff12"></div>
+          <div style="height:34px;border-radius:5px;background:#ffffff12"></div>
+        </div>
+        <div style="display:grid;grid-template-rows:56px 90px 1fr;gap:14px;padding:14px">
+          <div style="background:#fff;border:1px solid #dde4ef;border-radius:6px;display:flex;align-items:center;justify-content:space-between;padding:0 14px">
+            <strong>Project Modification</strong>
+            <div style="display:flex;gap:8px"><span style="width:80px;height:30px;background:#eef2f7;border-radius:5px"></span><span style="width:120px;height:30px;background:#2563eb;border-radius:5px"></span></div>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px">
+            <div style="background:#fff;border:1px solid #dde4ef;border-left:4px solid #2563eb;border-radius:6px;padding:10px"></div>
+            <div style="background:#fff;border:1px solid #dde4ef;border-left:4px solid #0f766e;border-radius:6px;padding:10px"></div>
+            <div style="background:#fff;border:1px solid #dde4ef;border-left:4px solid #d97706;border-radius:6px;padding:10px"></div>
+            <div style="background:#fff;border:1px solid #dde4ef;border-left:4px solid #64748b;border-radius:6px;padding:10px"></div>
+          </div>
+          <div style="background:#fff;border:1px solid #dde4ef;border-radius:6px;padding:12px">
+            <div style="height:30px;background:#f1f5f9;border-radius:4px;margin-bottom:10px"></div>
+            <div style="height:14px;background:#e2e8f0;margin:8px 0"></div>
+            <div style="height:14px;background:#e2e8f0;margin:8px 0;width:90%"></div>
+            <div style="height:14px;background:#e2e8f0;margin:8px 0;width:84%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>Hybrid Work Management</h3>
+      <p>Recommended: Jira-like speed and clarity on top of an SAP-like enterprise shell, without changing the app’s current workflows.</p>
+    </div>
+  </div>
+</div>
