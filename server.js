@@ -187,6 +187,42 @@ async function handleApi(req, res) {
   return sendJson(res, 404, { error: "API route not found." });
 }
 
+function adaptApiResponse(res) {
+  if (typeof res.status === "function" && typeof res.json === "function") return res;
+
+  res.status = code => {
+    res.statusCode = code;
+    return res;
+  };
+
+  res.json = payload => {
+    sendJson(res, res.statusCode || 200, payload);
+    return res;
+  };
+
+  return res;
+}
+
+async function handleServerlessApi(req, res) {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  const route = url.pathname.replace(/\/+$/, "");
+  const query = Object.fromEntries(url.searchParams.entries());
+
+  if (route !== "/api/data" && route !== "/api/tasks") return false;
+
+  req.query = query;
+  if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && req.body === undefined) {
+    req.body = await readBody(req);
+  }
+
+  const handler = route === "/api/data"
+    ? require("./api/data.js")
+    : require("./api/tasks.js");
+
+  await handler(req, adaptApiResponse(res));
+  return true;
+}
+
 async function serveStatic(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
@@ -212,6 +248,7 @@ async function serveStatic(req, res) {
 async function appHandler(req, res) {
   try {
     if (req.url.startsWith("/api/")) {
+      if (process.env.VERCEL && await handleServerlessApi(req, res)) return;
       await handleApi(req, res);
       return;
     }
