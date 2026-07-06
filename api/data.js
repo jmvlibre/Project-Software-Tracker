@@ -1,9 +1,15 @@
-import { createClient } from "@supabase/supabase-js";
-
 const STATE_KEY = "directory-management";
 const MAX_PAYLOAD_BYTES = 1_000_000;
+let supabaseModulePromise;
 
-function getSupabase() {
+async function loadSupabaseModule() {
+  if (!supabaseModulePromise) {
+    supabaseModulePromise = import("@supabase/supabase-js");
+  }
+  return supabaseModulePromise;
+}
+
+async function getSupabase() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
@@ -11,6 +17,7 @@ function getSupabase() {
     throw new Error("Supabase environment variables are not configured.");
   }
 
+  const { createClient } = await loadSupabaseModule();
   return createClient(url, key, {
     auth: {
       persistSession: false,
@@ -41,7 +48,7 @@ function requestBody(req) {
   return req.body || {};
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   sendCors(res);
 
   if (req.method === "OPTIONS") {
@@ -49,7 +56,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabase();
+    const supabase = await getSupabase();
 
     if (req.method === "GET") {
       const { data, error } = await supabase
@@ -96,4 +103,4 @@ export default async function handler(req, res) {
     console.error("App data API error:", error);
     return res.status(500).json({ error: error.message || "Server error" });
   }
-}
+};

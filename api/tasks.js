@@ -1,6 +1,13 @@
-import { createClient } from "@supabase/supabase-js";
+let supabaseModulePromise;
 
-function getSupabase() {
+async function loadSupabaseModule() {
+  if (!supabaseModulePromise) {
+    supabaseModulePromise = import("@supabase/supabase-js");
+  }
+  return supabaseModulePromise;
+}
+
+async function getSupabase() {
   const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
@@ -8,6 +15,7 @@ function getSupabase() {
     throw new Error("Supabase environment variables are not configured.");
   }
 
+  const { createClient } = await loadSupabaseModule();
   return createClient(supabaseUrl, supabaseKey, {
     auth: {
       persistSession: false,
@@ -16,7 +24,7 @@ function getSupabase() {
   });
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
@@ -28,7 +36,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const supabase = getSupabase();
+    const supabase = await getSupabase();
 
     if (req.method === "GET") {
       const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
@@ -65,4 +73,4 @@ export default async function handler(req, res) {
     console.error("API error:", error);
     res.status(500).json({ error: error.message });
   }
-}
+};
