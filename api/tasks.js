@@ -1,4 +1,4 @@
-const SUPABASE_TIMEOUT_MS = 7000;
+const SUPABASE_TIMEOUT_MS = 2500;
 
 function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
@@ -17,19 +17,28 @@ function getSupabaseConfig() {
 async function supabaseRequest(path, options = {}) {
   const { url, key } = getSupabaseConfig();
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS);
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      controller.abort();
+      reject(new Error("Supabase request timed out."));
+    }, SUPABASE_TIMEOUT_MS);
+  });
 
   try {
-    const response = await fetch(`${url}/rest/v1/${path}`, {
-      ...options,
-      signal: controller.signal,
-      headers: {
-        apikey: key,
-        Authorization: `Bearer ${key}`,
-        Accept: "application/json",
-        ...(options.headers || {})
-      }
-    });
+    const response = await Promise.race([
+      fetch(`${url}/rest/v1/${path}`, {
+        ...options,
+        signal: controller.signal,
+        headers: {
+          apikey: key,
+          Authorization: `Bearer ${key}`,
+          Accept: "application/json",
+          ...(options.headers || {})
+        }
+      }),
+      timeout
+    ]);
 
     const text = await response.text();
     const body = text ? JSON.parse(text) : null;
@@ -46,7 +55,7 @@ async function supabaseRequest(path, options = {}) {
     }
     throw error;
   } finally {
-    clearTimeout(timeout);
+    clearTimeout(timeoutId);
   }
 }
 

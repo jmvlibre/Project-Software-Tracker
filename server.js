@@ -209,7 +209,7 @@ async function serveStatic(req, res) {
   }
 }
 
-const server = http.createServer(async (req, res) => {
+async function appHandler(req, res) {
   try {
     if (req.url.startsWith("/api/")) {
       await handleApi(req, res);
@@ -219,11 +219,17 @@ const server = http.createServer(async (req, res) => {
   } catch (error) {
     sendJson(res, 500, { error: error.message || "Server error" });
   }
-});
+}
 
-ensureStore().then(() => {
-  server.listen(PORT, HOST, () => {
-    console.log(`Project task tracker running at http://localhost:${PORT}`);
-    console.log(`For other computers, open http://<this-computer-ip>:${PORT}`);
+if (require.main === module) {
+  const server = http.createServer(appHandler);
+
+  ensureStore().then(() => {
+    server.listen(PORT, HOST, () => {
+      console.log(`Project task tracker running at http://localhost:${PORT}`);
+      console.log(`For other computers, open http://<this-computer-ip>:${PORT}`);
+    });
   });
-});
+}
+
+module.exports = appHandler;
