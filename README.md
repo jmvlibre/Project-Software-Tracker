@@ -64,6 +64,14 @@ Output Directory: public
 
 ## GitHub Publish
 
+GitHub Pages can only host the static files. This project uses Vercel serverless API routes for `/api/data` and `/api/tasks`, so the working production app should be opened from the Vercel URL:
+
+```text
+https://project-software-tracker.vercel.app/
+```
+
+The root `index.html` redirects GitHub Pages visitors to that Vercel app.
+
 ```powershell
 git init
 git add .
