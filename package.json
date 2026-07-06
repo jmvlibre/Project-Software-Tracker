@@ -2,7 +2,6 @@
   "name": "shared-project-task-tracker",
   "version": "1.0.0",
   "description": "A shared project task tracker with Supabase backend for multiple users and computers.",
-  "main": "server.js",
   "scripts": {
     "build": "node scripts/generate-config.js",
     "start": "node server.js",
