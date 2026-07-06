@@ -1,15 +1,8 @@
 const STATE_KEY = "directory-management";
 const MAX_PAYLOAD_BYTES = 1_000_000;
-let supabaseModulePromise;
+const SUPABASE_TIMEOUT_MS = 7000;
 
-async function loadSupabaseModule() {
-  if (!supabaseModulePromise) {
-    supabaseModulePromise = import("@supabase/supabase-js");
-  }
-  return supabaseModulePromise;
-}
-
-async function getSupabase() {
+function getSupabaseConfig() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
@@ -17,13 +10,46 @@ async function getSupabase() {
     throw new Error("Supabase environment variables are not configured.");
   }
 
-  const { createClient } = await loadSupabaseModule();
-  return createClient(url, key, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
+  return {
+    url: url.replace(/\/+$/, ""),
+    key
+  };
+}
+
+async function supabaseRequest(path, options = {}) {
+  const { url, key } = getSupabaseConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${url}/rest/v1/${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        Accept: "application/json",
+        ...(options.headers || {})
+      }
+    });
+
+    const text = await response.text();
+    const body = text ? JSON.parse(text) : null;
+
+    if (!response.ok) {
+      const message = body?.message || body?.error || `Supabase request failed with status ${response.status}`;
+      throw new Error(message);
     }
-  });
+
+    return body;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Supabase request timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 function sendCors(res) {
@@ -56,20 +82,16 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const supabase = await getSupabase();
-
     if (req.method === "GET") {
-      const { data, error } = await supabase
-        .from("app_state")
-        .select("payload, updated_at, updated_by")
-        .eq("key", STATE_KEY)
-        .maybeSingle();
+      const rows = await supabaseRequest(
+        `app_state?key=eq.${encodeURIComponent(STATE_KEY)}&select=payload,updated_at,updated_by`
+      );
+      const row = Array.isArray(rows) ? rows[0] : null;
 
-      if (error) throw error;
       return res.status(200).json({
-        data: data?.payload || null,
-        updatedAt: data?.updated_at || null,
-        updatedBy: data?.updated_by || null
+        data: row?.payload || null,
+        updatedAt: row?.updated_at || null,
+        updatedBy: row?.updated_by || null
       });
     }
 
@@ -88,14 +110,17 @@ module.exports = async function handler(req, res) {
         return res.status(413).json({ error: "Data is too large to sync." });
       }
 
-      const { data, error } = await supabase
-        .from("app_state")
-        .upsert({ key: STATE_KEY, payload, updated_by: updatedBy }, { onConflict: "key" })
-        .select("updated_at, updated_by")
-        .single();
+      const rows = await supabaseRequest("app_state?on_conflict=key&select=updated_at,updated_by", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Prefer: "resolution=merge-duplicates,return=representation"
+        },
+        body: JSON.stringify({ key: STATE_KEY, payload, updated_by: updatedBy })
+      });
+      const row = Array.isArray(rows) ? rows[0] : null;
 
-      if (error) throw error;
-      return res.status(200).json({ ok: true, updatedAt: data.updated_at, updatedBy: data.updated_by });
+      return res.status(200).json({ ok: true, updatedAt: row?.updated_at || null, updatedBy: row?.updated_by || null });
     }
 
     return res.status(405).json({ error: "Method not allowed" });

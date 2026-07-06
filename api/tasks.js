@@ -1,27 +1,64 @@
-let supabaseModulePromise;
+const SUPABASE_TIMEOUT_MS = 7000;
 
-async function loadSupabaseModule() {
-  if (!supabaseModulePromise) {
-    supabaseModulePromise = import("@supabase/supabase-js");
-  }
-  return supabaseModulePromise;
-}
+function getSupabaseConfig() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
 
-async function getSupabase() {
-  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseKey) {
+  if (!url || !key) {
     throw new Error("Supabase environment variables are not configured.");
   }
 
-  const { createClient } = await loadSupabaseModule();
-  return createClient(supabaseUrl, supabaseKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false
+  return {
+    url: url.replace(/\/+$/, ""),
+    key
+  };
+}
+
+async function supabaseRequest(path, options = {}) {
+  const { url, key } = getSupabaseConfig();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SUPABASE_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(`${url}/rest/v1/${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        Accept: "application/json",
+        ...(options.headers || {})
+      }
+    });
+
+    const text = await response.text();
+    const body = text ? JSON.parse(text) : null;
+
+    if (!response.ok) {
+      const message = body?.message || body?.error || `Supabase request failed with status ${response.status}`;
+      throw new Error(message);
     }
-  });
+
+    return body;
+  } catch (error) {
+    if (error.name === "AbortError") {
+      throw new Error("Supabase request timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function requestBody(req) {
+  if (typeof req.body === "string") {
+    try {
+      return JSON.parse(req.body || "{}");
+    } catch {
+      return {};
+    }
+  }
+  return req.body || {};
 }
 
 module.exports = async function handler(req, res) {
@@ -36,41 +73,48 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const supabase = await getSupabase();
-
     if (req.method === "GET") {
-      const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
-      if (error) throw error;
-      return res.status(200).json({ tasks: data || [] });
+      const tasks = await supabaseRequest("tasks?select=*&order=created_at.desc");
+      return res.status(200).json({ tasks: tasks || [] });
     }
 
     if (req.method === "POST") {
-      const { title, project, owner, status, priority, due_date, notes, remarks } = req.body;
-      const { data, error } = await supabase
-        .from("tasks")
-        .insert([{ title, project, owner, status: status || "To Do", priority: priority || "Medium", due_date, notes, remarks }])
-        .select();
-      if (error) throw error;
-      return res.status(201).json(data[0]);
+      const { title, project, owner, status, priority, due_date, notes, remarks } = requestBody(req);
+      const rows = await supabaseRequest("tasks?select=*", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify([{ title, project, owner, status: status || "To Do", priority: priority || "Medium", due_date, notes, remarks }])
+      });
+      return res.status(201).json(rows?.[0] || null);
     }
 
     if (req.method === "PUT") {
-      const { id, ...updates } = req.body;
-      const { data, error } = await supabase.from("tasks").update(updates).eq("id", id).select();
-      if (error) throw error;
-      return res.status(200).json(data[0]);
+      const { id, ...updates } = requestBody(req);
+      const rows = await supabaseRequest(`tasks?id=eq.${encodeURIComponent(id)}&select=*`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Prefer: "return=representation"
+        },
+        body: JSON.stringify(updates)
+      });
+      return res.status(200).json(rows?.[0] || null);
     }
 
     if (req.method === "DELETE") {
       const { id } = req.query;
-      const { error } = await supabase.from("tasks").delete().eq("id", id);
-      if (error) throw error;
+      await supabaseRequest(`tasks?id=eq.${encodeURIComponent(id)}`, {
+        method: "DELETE"
+      });
       return res.status(204).end();
     }
 
-    res.status(405).json({ error: "Method not allowed" });
+    return res.status(405).json({ error: "Method not allowed" });
   } catch (error) {
     console.error("API error:", error);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message || "Server error" });
   }
 };
