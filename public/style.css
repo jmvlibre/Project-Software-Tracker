@@ -10367,3 +10367,33 @@ body[data-theme="maroonBlack"] .expandable-details-toggle {
   }
 }
 
+body[data-view="approval"] .app-layout {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body[data-view="approval"] .sidebar,
+body[data-view="approval"] .app-header .header-utility {
+  display: none;
+}
+
+body[data-view="approval"] .page-shell {
+  padding: 24px;
+}
+
+body[data-view="approval"] .app-header {
+  max-width: 680px;
+  margin: 0 auto;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 16px 0 0;
+}
+
+body[data-view="approval"] .app-header h1 {
+  color: var(--primary);
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+

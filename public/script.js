@@ -24,6 +24,15 @@ let approvalRouteProject = null;
 let approvalFormViewed = false;
 const EXPANDABLE_DETAILS_LINE_LIMIT = 4;
 const EXPANDABLE_DETAILS_CHAR_LIMIT = 160;
+const MODIFICATION_FORM_TEMPLATE_COLUMNS = [
+  { key: "id", label: "Modification Form ID (Auto)" },
+  { key: "projectName", label: "Project Name" },
+  { key: "requested", label: "Requestor Name" },
+  { key: "clientDepartment", label: "Client / Department" },
+  { key: "targetCompletionDate", label: "Target Completion Date" },
+  { key: "details", label: "Modification Details" },
+  { key: "remarks", label: "Remarks" }
+];
 
 const calendarTaskSeed = [];
 
@@ -65,6 +74,7 @@ const directoryViews = {
       { key: "targetCompletionDate", label: "Target Completion Date", type: "date" },
       { key: "details", label: "Modification Details", placeholder: "Modification details", type: "textarea", required: true },
       { key: "remarks", label: "Remarks", placeholder: "Remarks", type: "textarea" },
+      { key: "attachmentName", label: "Attachment", type: "file", accept: "image/*,.pdf,.doc,.docx,.xls,.xlsx", table: false },
       { key: "approvedBy", label: "Name and Signature", placeholder: "Name and signature" },
       { key: "approvedPosition", label: "Position", placeholder: "Approver position" },
       { key: "approvedDateTime", label: "Approved Date / Time", type: "datetime-local" }
@@ -275,6 +285,9 @@ const elements = {
   cancelEditBtn: document.querySelector("#cancelEditBtn"),
   tableHead: document.querySelector("#tableHead"),
   recordRows: document.querySelector("#recordRows"),
+  templateBtn: document.querySelector("#templateBtn"),
+  importTemplateBtn: document.querySelector("#importTemplateBtn"),
+  importTemplateInput: document.querySelector("#importTemplateInput"),
   exportWordBtn: document.querySelector("#exportWordBtn"),
   exportPdfBtn: document.querySelector("#exportPdfBtn"),
   approvalProjectLinkBtn: document.querySelector("#approvalProjectLinkBtn"),
@@ -977,6 +990,10 @@ function hideLoginModal() {
   elements.loginModal.classList.add("hidden");
 }
 
+function isGuestApprovalRoute() {
+  return Boolean(approvalRouteProject);
+}
+
 function closeUserProfileMenu() {
   elements.userProfile.classList.remove("is-open");
   elements.userProfileSummary?.setAttribute("aria-expanded", "false");
@@ -990,11 +1007,11 @@ function toggleUserProfileMenu() {
 
 function setAuthenticated(isAuthenticated) {
   state.isAuthenticated = isAuthenticated;
-  const isGuestApprovalRoute = Boolean(approvalRouteProject);
+  const isApprovalGuest = isGuestApprovalRoute();
 
-  elements.appLayout.classList.toggle("hidden", !state.isAuthenticated && !isGuestApprovalRoute);
-  elements.loginModal.classList.toggle("hidden", state.isAuthenticated || isGuestApprovalRoute);
-  elements.loginBtn.classList.toggle("hidden", state.isAuthenticated || isGuestApprovalRoute);
+  elements.appLayout.classList.toggle("hidden", !state.isAuthenticated && !isApprovalGuest);
+  elements.loginModal.classList.toggle("hidden", state.isAuthenticated || isApprovalGuest);
+  elements.loginBtn.classList.toggle("hidden", state.isAuthenticated || isApprovalGuest);
   elements.logoutBtn.classList.toggle("hidden", !state.isAuthenticated);
   if (!state.isAuthenticated) {
     closeUserProfileMenu();
@@ -1006,7 +1023,7 @@ function setAuthenticated(isAuthenticated) {
     elements.rememberMe.checked = false;
     elements.loginPassword.type = "password";
     elements.togglePassword?.classList.remove("password-visible");
-    if (!isGuestApprovalRoute) {
+    if (!isApprovalGuest) {
       requestAnimationFrame(() => elements.loginUsername.focus());
     }
   }
@@ -2857,6 +2874,8 @@ function render(options = {}) {
   document.querySelector(".records-panel").classList.toggle("hidden", isCalendarView() || state.activeView === "dashboard");
   elements.createBtn.classList.toggle("hidden", isCalendarView() || state.activeView === "dashboard" || !canCreateInView);
   elements.exportBtn.classList.toggle("hidden", isCalendarView() || state.activeView === "dashboard");
+  elements.templateBtn?.classList.toggle("hidden", state.activeView !== "modificationForm");
+  elements.importTemplateBtn?.classList.toggle("hidden", state.activeView !== "modificationForm" || !canCreateInView);
   elements.exportWordBtn?.classList.toggle("hidden", state.activeView !== "modificationForm");
   elements.exportPdfBtn?.classList.toggle("hidden", state.activeView !== "modificationForm");
   elements.approvalProjectLinkBtn?.classList.toggle("hidden", state.activeView !== "modificationForm");
@@ -3310,6 +3329,7 @@ function showApprovalRoute() {
   const projectApprovals = approvalList(records);
 
   document.body.dataset.view = "approval";
+  elements.loginModal.classList.add("hidden");
   elements.dashboardPanel.classList.add("hidden");
   elements.calendarPanel.classList.add("hidden");
   elements.modificationFilterPanel.classList.add("hidden");
@@ -3318,6 +3338,8 @@ function showApprovalRoute() {
   elements.approvalPanel?.classList.remove("hidden");
   elements.createBtn.classList.add("hidden");
   elements.exportBtn.classList.add("hidden");
+  elements.templateBtn?.classList.add("hidden");
+  elements.importTemplateBtn?.classList.add("hidden");
   elements.exportWordBtn?.classList.add("hidden");
   elements.exportPdfBtn?.classList.add("hidden");
   elements.approvalProjectLinkBtn?.classList.add("hidden");
@@ -3467,6 +3489,280 @@ function documentFileName(recordOrRecords, extension) {
     .toLowerCase();
 
   return `${safeName}.${extension}`;
+}
+
+function downloadModificationFormTemplate() {
+  const headers = MODIFICATION_FORM_TEMPLATE_COLUMNS.map(column => column.label);
+  const blankRows = Array.from({ length: 10 }, () => headers.map(() => ""));
+  const rows = [headers, ...blankRows];
+  const worksheet = `
+    <html>
+      <head>
+        <meta charset="utf-8">
+        <style>
+          table { border-collapse: collapse; font-family: Arial, sans-serif; }
+          th, td { border: 1px solid #9aa8b7; padding: 8px; vertical-align: top; }
+          th { background: #eef2f7; font-weight: 700; }
+        </style>
+      </head>
+      <body>
+        <table>
+          <tbody>
+            ${rows.map(row => `<tr>${row.map(cell => `<td>${escapeHtml(cell)}</td>`).join("")}</tr>`).join("")}
+          </tbody>
+        </table>
+      </body>
+    </html>`;
+  const blob = new Blob([worksheet], { type: "application/vnd.ms-excel;charset=utf-8" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "modification-form-import-template.xls";
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
+function parseCsvRows(text) {
+  const firstLine = String(text || "")
+    .split(/\r\n|\r|\n/)
+    .find(line => line.trim()) || "";
+  const delimiter = ["\t", ",", ";"]
+    .map(value => ({
+      value,
+      count: firstLine.split(value).length - 1
+    }))
+    .sort((left, right) => right.count - left.count)[0]?.value || ",";
+  const rows = [];
+  let row = [];
+  let cell = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    const next = text[index + 1];
+
+    if (char === '"' && inQuotes && next === '"') {
+      cell += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      inQuotes = !inQuotes;
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      row.push(cell);
+      cell = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && next === "\n") index += 1;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+      continue;
+    }
+
+    cell += char;
+  }
+
+  row.push(cell);
+  rows.push(row);
+  return rows;
+}
+
+function parseHtmlTableRows(text) {
+  if (!/<table[\s>]/i.test(text)) return [];
+  const documentHtml = new DOMParser().parseFromString(text, "text/html");
+  return [...documentHtml.querySelectorAll("table tr")]
+    .map(row => [...row.cells].map(cell => cell.textContent.trim()));
+}
+
+function normalizeTemplateHeader(value) {
+  return String(value || "")
+    .replace(/^\uFEFF/, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "");
+}
+
+function templateHeaderKey(header) {
+  const normalized = normalizeTemplateHeader(header);
+  const aliases = {
+    modificationformidauto: "id",
+    modificationformid: "id",
+    id: "id",
+    projectname: "projectName",
+    requested: "requested",
+    requestor: "requested",
+    requestorname: "requested",
+    clientdepartment: "clientDepartment",
+    department: "clientDepartment",
+    targetcompletiondate: "targetCompletionDate",
+    completiondate: "targetCompletionDate",
+    modificationdetails: "details",
+    details: "details",
+    remarks: "remarks"
+  };
+
+  return aliases[normalized] || "";
+}
+
+function modificationFormTemplateRecords(rows) {
+  const populatedRows = rows.filter(row => row.some(cell => String(cell || "").trim()));
+  const headers = populatedRows.shift() || [];
+  const headerKeys = headers.map(templateHeaderKey);
+  const requiredHeaders = ["projectName", "requested", "details"];
+  const missingHeaders = requiredHeaders.filter(key => !headerKeys.includes(key));
+
+  if (missingHeaders.length) {
+    throw new Error("Template is missing Project Name, Requestor Name, or Modification Details.");
+  }
+
+  const lastContext = {
+    projectName: "",
+    requested: "",
+    clientDepartment: "",
+    targetCompletionDate: ""
+  };
+  const records = populatedRows
+    .map((row, index) => {
+      const record = { rowNumber: index + 2 };
+      headerKeys.forEach((key, index) => {
+        if (!key || key === "id") return;
+        record[key] = String(row[index] || "").trim();
+      });
+
+      ["projectName", "requested", "clientDepartment", "targetCompletionDate"].forEach(key => {
+        if (record[key]) {
+          lastContext[key] = record[key];
+        } else if (lastContext[key]) {
+          record[key] = lastContext[key];
+        }
+      });
+
+      return record;
+    })
+    .filter(record =>
+      Object.entries(record).some(([key, value]) => key !== "rowNumber" && String(value || "").trim())
+    );
+
+  const incompleteRows = records
+    .map(record => ({
+      rowNumber: record.rowNumber,
+      complete: Boolean(record.projectName && record.requested && record.details)
+    }))
+    .filter(row => !row.complete);
+
+  if (incompleteRows.length) {
+    const rowList = incompleteRows.map(row => row.rowNumber).join(", ");
+    throw new Error(`Rows ${rowList} need Project Name, Requestor Name, and Modification Details.`);
+  }
+
+  return records.map(record => ({
+    projectName: record.projectName,
+    requested: record.requested,
+    clientDepartment: record.clientDepartment || projectDepartment(record.projectName),
+    targetCompletionDate: parseDateKey(record.targetCompletionDate) || record.targetCompletionDate || "",
+    details: record.details,
+    remarks: record.remarks || "",
+    approvedBy: "",
+    approvedPosition: "",
+    approvedDateTime: ""
+  }));
+}
+
+function nextIdFromRecords(viewKey, records) {
+  const prefix = idPrefix(viewKey);
+  const maxNumber = records.reduce((max, record) => {
+    const number = Number(String(record.id || "").replace(`${prefix}-`, ""));
+    return Number.isNaN(number) ? max : Math.max(max, number);
+  }, 0);
+  return `${prefix}-${String(maxNumber + 1).padStart(3, "0")}`;
+}
+
+function readImportTemplateFile(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Template file could not be read."));
+    reader.readAsText(file);
+  });
+}
+
+async function importModificationFormTemplate(file) {
+  if (!file?.name) return;
+
+  try {
+    const text = await readImportTemplateFile(file);
+    const rows = parseHtmlTableRows(text);
+    const parsedRows = rows.length ? rows : parseCsvRows(text);
+    const records = modificationFormTemplateRecords(parsedRows);
+
+    if (!records.length) {
+      showMessageModal({
+        title: "No Template Rows",
+        message: "Add at least one Modification Form row before importing the template."
+      });
+      return;
+    }
+
+    const importedRecords = [];
+    records.forEach(record => {
+      importedRecords.push({
+        id: nextIdFromRecords("modificationForm", [...state.data.modificationForm, ...importedRecords]),
+        ...record
+      });
+    });
+
+    state.data.modificationForm.unshift(...importedRecords);
+    if (importedRecords.length === 1) {
+      state.modificationProject = importedRecords[0].projectName;
+    }
+    saveData();
+    render();
+    showSaveMessage(`${importedRecords.length} Modification Form transaction${importedRecords.length === 1 ? "" : "s"} imported.`);
+  } catch (error) {
+    showMessageModal({
+      title: "Import Template Error",
+      message: error.message || "The template could not be imported."
+    });
+  } finally {
+    elements.importTemplateInput.value = "";
+  }
+}
+
+function modificationFormAttachmentsHtml(records) {
+  const attachmentRows = records
+    .map((record, index) => ({ record, detailNo: index + 1 }))
+    .filter(({ record }) => String(record?.attachmentName || "").trim());
+
+  if (!attachmentRows.length) return "";
+
+  return `
+    <div class="section-gap"></div>
+    <table class="attachment-table">
+      <tr>
+        <th class="attachment-no">No.</th>
+        <th>Uploaded Attachment</th>
+      </tr>
+      ${attachmentRows.map(({ record, detailNo }) => {
+        const attachmentName = String(record.attachmentName || "").trim();
+        const imagePreview = isImageAttachment(record) && record.attachmentData
+          ? `<img class="attachment-image" src="${escapeHtml(record.attachmentData)}" alt="${escapeHtml(attachmentName)}">`
+          : "";
+        return `
+        <tr>
+          <td class="attachment-no">${escapeHtml(detailNo)}</td>
+          <td>
+            <div class="attachment-name">${escapeHtml(attachmentName)}</div>
+            ${imagePreview}
+          </td>
+        </tr>`;
+      }).join("")}
+    </table>`;
 }
 
 function modificationFormHtml(recordOrRecords, options = {}) {
@@ -3641,6 +3937,32 @@ function modificationFormHtml(recordOrRecords, options = {}) {
     .detail-main {
       width: 47%;
     }
+    .attachment-table th {
+      background: #f2f2f2;
+      color: #000;
+      text-align: left;
+      font-weight: 700;
+      padding: 4px 8px;
+    }
+    .attachment-table td {
+      min-height: 34px;
+      vertical-align: top;
+    }
+    .attachment-no {
+      width: 7%;
+      text-align: center;
+    }
+    .attachment-name {
+      font-weight: 700;
+      overflow-wrap: anywhere;
+    }
+    .attachment-image {
+      display: block;
+      max-width: 320px;
+      max-height: 180px;
+      margin-top: 8px;
+      object-fit: contain;
+    }
     .approval {
       margin: 22px 0 8px;
       font-weight: 700;
@@ -3736,6 +4058,8 @@ function modificationFormHtml(recordOrRecords, options = {}) {
           <td>${addedByRemarksHtml(row.remarks)}</td>
         </tr>`).join("")}
     </table>
+
+    ${modificationFormAttachmentsHtml(records)}
 
     <p class="approval">Approved by:</p>
     <table class="approval-table">
@@ -4052,6 +4376,12 @@ function checkRememberedLogin() {
 }
 
 function initializeLogin() {
+  if (isGuestApprovalRoute()) {
+    elements.loginModal.classList.add("hidden");
+    elements.loginBtn.classList.add("hidden");
+    return;
+  }
+
   checkRememberedLogin();
   
   if (isAccountLocked()) {
@@ -4104,6 +4434,11 @@ elements.createBtn.addEventListener("click", () => showForm());
 elements.cancelEditBtn.addEventListener("click", hideForm);
 elements.recordForm.addEventListener("submit", handleSave);
 elements.exportBtn.addEventListener("click", exportRecords);
+elements.templateBtn?.addEventListener("click", downloadModificationFormTemplate);
+elements.importTemplateBtn?.addEventListener("click", () => elements.importTemplateInput?.click());
+elements.importTemplateInput?.addEventListener("change", event => {
+  importModificationFormTemplate(event.target.files?.[0]);
+});
 elements.exportWordBtn?.addEventListener("click", async () => {
   await refreshModificationFormProjectFromCloud(state.modificationProject);
   const records = modificationFormDocumentRecords();
