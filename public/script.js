@@ -148,7 +148,7 @@ const directoryViews = {
       { key: "projectName", label: "Project Name", placeholder: "Select project", required: true },
       { key: "details", label: "Test Details", placeholder: "Test case details", type: "textarea", required: true },
       { key: "qaRemarks", label: "QA Remarks", placeholder: "QA remarks", type: "textarea" },
-      { key: "developerRemarks", label: "Developer Remarks", placeholder: "Developer remarks", type: "textarea" },
+      { key: "developerRemarks", label: "Developer Remarks", placeholder: "Developer remarks", type: "textarea", minLength: 15 },
       { key: "qa", label: "QA", placeholder: "Assigned QA", required: true, table: false, form: false },
       {
         key: "status",
@@ -973,7 +973,7 @@ function showLoginModal() {
 }
 
 function hideLoginModal() {
-  if (!state.isAuthenticated) return;
+  if (!state.isAuthenticated && !approvalRouteProject) return;
   elements.loginModal.classList.add("hidden");
 }
 
@@ -990,9 +990,11 @@ function toggleUserProfileMenu() {
 
 function setAuthenticated(isAuthenticated) {
   state.isAuthenticated = isAuthenticated;
-  elements.appLayout.classList.toggle("hidden", !state.isAuthenticated);
-  elements.loginModal.classList.toggle("hidden", state.isAuthenticated);
-  elements.loginBtn.classList.toggle("hidden", state.isAuthenticated);
+  const isGuestApprovalRoute = Boolean(approvalRouteProject);
+
+  elements.appLayout.classList.toggle("hidden", !state.isAuthenticated && !isGuestApprovalRoute);
+  elements.loginModal.classList.toggle("hidden", state.isAuthenticated || isGuestApprovalRoute);
+  elements.loginBtn.classList.toggle("hidden", state.isAuthenticated || isGuestApprovalRoute);
   elements.logoutBtn.classList.toggle("hidden", !state.isAuthenticated);
   if (!state.isAuthenticated) {
     closeUserProfileMenu();
@@ -1004,7 +1006,9 @@ function setAuthenticated(isAuthenticated) {
     elements.rememberMe.checked = false;
     elements.loginPassword.type = "password";
     elements.togglePassword?.classList.remove("password-visible");
-    requestAnimationFrame(() => elements.loginUsername.focus());
+    if (!isGuestApprovalRoute) {
+      requestAnimationFrame(() => elements.loginUsername.focus());
+    }
   }
   renderUserProfile();
 }
@@ -1652,6 +1656,7 @@ function showForm(record = null) {
     input.name = field.key;
     if (field.type !== "file") input.value = formControlValue(field, recordValue);
     input.maxLength = field.type === "textarea" ? 1000 : 120;
+    if (field.minLength) input.minLength = field.minLength;
     if (field.placeholder) input.placeholder = field.placeholder;
     if (field.accept) input.accept = field.accept;
     input.required = Boolean(field.required);
@@ -2257,6 +2262,19 @@ function showSaveMessage(message) {
   }, 3200);
 }
 
+function minimumLengthMessage(view, payload) {
+  const developerRemarksRequired = state.activeView === "testCases" && isDeveloperTestCaseRemarksOnly();
+  const field = view.fields.find(item => item.minLength && (
+    String(payload[item.key] || "").length > 0 ||
+    (developerRemarksRequired && item.key === "developerRemarks")
+  ));
+  if (!field) return "";
+
+  const value = String(payload[field.key] || "");
+  if (value.length >= field.minLength) return "";
+  return `${field.label} must be at least ${field.minLength} characters.`;
+}
+
 async function handleSave(event) {
   event.preventDefault();
   const view = directoryViews[state.activeView];
@@ -2277,6 +2295,16 @@ async function handleSave(event) {
     if (field.type === "file") return;
     payload[field.key] = String(formData.get(field.key) || "").trim();
   });
+
+  const lengthMessage = minimumLengthMessage(view, payload);
+  if (lengthMessage) {
+    showMessageModal({
+      title: "Minimum Characters Required",
+      message: lengthMessage
+    });
+    elements.formFields.querySelector(`[name="developerRemarks"]`)?.focus();
+    return;
+  }
 
   const baselineDefaults = firstProjectDefaults(state.activeView, payload.projectName, state.editId);
   if (state.activeView === "modification") {
