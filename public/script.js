@@ -85,7 +85,7 @@ const directoryViews = {
         key: "role",
         label: "Role",
         type: "select",
-        options: ["User", "Administrator"],
+        options: ["User", "Developer", "Administrator"],
         required: true
       },
       { key: "department", label: "Department", placeholder: "Department", required: true },
@@ -1016,8 +1016,36 @@ function isCurrentAdmin() {
     ["admin", "administrator"].includes(role);
 }
 
+function isCurrentDeveloper() {
+  const role = String(state.currentUser?.role || "").trim().toLowerCase();
+  return ["developer", "dev"].includes(role);
+}
+
+function isDeveloperRestricted() {
+  return isCurrentDeveloper() && !isCurrentAdmin();
+}
+
 function canViewUserManagement() {
   return isCurrentAdmin();
+}
+
+function isDeveloperTestCaseRemarksOnly() {
+  return state.activeView === "testCases" && isDeveloperRestricted();
+}
+
+function canCreateInCurrentView() {
+  if (state.activeView === "userManagement") return isCurrentAdmin();
+  if (isDeveloperRestricted()) return false;
+  return true;
+}
+
+function canEditCurrentRecord() {
+  if (!isDeveloperRestricted()) return true;
+  return state.activeView === "testCases";
+}
+
+function canDeleteCurrentRecord() {
+  return !isDeveloperRestricted();
 }
 
 function currentUserDisplayName() {
@@ -1030,8 +1058,12 @@ function currentUserDisplayName() {
   return name.toLowerCase() === DEFAULT_ADMIN_USERNAME.toLowerCase() ? "Admin" : name;
 }
 
-function currentLoggedInQaName() {
+function currentLoggedInAccountName() {
   return state.isAuthenticated && state.currentUser ? currentUserDisplayName() : "";
+}
+
+function currentLoggedInQaName() {
+  return currentLoggedInAccountName();
 }
 
 function currentUserRole() {
@@ -1207,7 +1239,7 @@ function remarkAuthorName(record, textKey, authorKey, fallbackAuthor = "") {
   const text = String(recordFieldValue(record, textKey) || "").trim();
   if (!text) return "";
 
-  return String(record?.[authorKey] || fallbackAuthor || currentLoggedInQaName() || "User").trim();
+  return String(record?.[authorKey] || fallbackAuthor || currentLoggedInAccountName() || "User").trim();
 }
 
 function remarkAuthorTooltip(record, textKey, authorKey, fallbackAuthor = "", label = "Added by") {
@@ -1217,7 +1249,15 @@ function remarkAuthorTooltip(record, textKey, authorKey, fallbackAuthor = "", la
 
 function testCaseRemarkTooltip(record, key) {
   if (key === "qaRemarks") return remarkAuthorTooltip(record, "qaRemarks", "qaRemarksBy", record?.qa || "QA", "QA by:");
-  if (key === "developerRemarks") return remarkAuthorTooltip(record, "developerRemarks", "developerRemarksBy", "Developer", "Developer by");
+  if (key === "developerRemarks") {
+    return remarkAuthorTooltip(
+      record,
+      "developerRemarks",
+      "developerRemarksBy",
+      record?.developer || currentLoggedInAccountName() || "Developer",
+      "Developer by:"
+    );
+  }
   return "";
 }
 
@@ -1537,6 +1577,20 @@ function showForm(record = null) {
     });
     return;
   }
+  if (isDeveloperRestricted() && state.activeView !== "testCases") {
+    showMessageModal({
+      title: "Developer Remarks Only",
+      message: "Developers can edit Developer Remarks on existing test cases only."
+    });
+    return;
+  }
+  if (!record && isDeveloperTestCaseRemarksOnly()) {
+    showMessageModal({
+      title: "Developer Remarks Only",
+      message: "Developers can update Developer Remarks on existing test cases only."
+    });
+    return;
+  }
 
   state.editId = record?.id || "";
   elements.editId.value = state.editId;
@@ -1549,6 +1603,7 @@ function showForm(record = null) {
     const span = document.createElement("span");
     const recordValue = defaultedRecordFieldValue(record, field);
     const isLoggedInQaField = state.activeView === "testCases" && field.key === "qa";
+    const isDeveloperLockedField = isDeveloperTestCaseRemarksOnly() && record && field.key !== "developerRemarks";
     const lookupOptions = isLoggedInQaField ? null : directoryLookupOptions(field.key, recordValue);
     let input;
 
@@ -1600,6 +1655,16 @@ function showForm(record = null) {
     if (field.placeholder) input.placeholder = field.placeholder;
     if (field.accept) input.accept = field.accept;
     input.required = Boolean(field.required);
+    if (isDeveloperLockedField) {
+      if (["select", "file"].includes(input.type) || input.tagName === "SELECT") {
+        input.disabled = true;
+      } else {
+        input.readOnly = true;
+        input.setAttribute("aria-readonly", "true");
+      }
+      input.classList.add("static-login-field");
+      label.title = "Developer role can edit Developer Remarks only.";
+    }
 
     label.append(span);
     if (state.activeView === "userManagement" && field.key === "password" && isCurrentAdmin()) {
@@ -1657,7 +1722,9 @@ function showForm(record = null) {
   if (!record) syncModificationProjectField();
   applyFirstProjectDefaultsToForm();
   elements.formFields.querySelector('[name="projectName"]')?.addEventListener("change", applyFirstProjectDefaultsToForm);
-  elements.formFields.querySelector("input, select, textarea")?.focus();
+  elements.formFields
+    .querySelector("input:not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled]):not([readonly])")
+    ?.focus();
 }
 
 function hideForm() {
@@ -1682,6 +1749,14 @@ function switchView(viewKey) {
 }
 
 function deleteRecord(id) {
+  if (!canDeleteCurrentRecord()) {
+    showMessageModal({
+      title: "Developer Remarks Only",
+      message: "Developers can edit Developer Remarks only and cannot delete records."
+    });
+    return;
+  }
+
   const record = state.data[state.activeView].find(item => item.id === id);
   showDeleteModal({
     id,
@@ -1708,6 +1783,14 @@ function confirmDeleteRecord() {
 }
 
 function editRecord(id) {
+  if (!canEditCurrentRecord()) {
+    showMessageModal({
+      title: "Developer Remarks Only",
+      message: "Developers can edit Developer Remarks on existing test cases only."
+    });
+    return;
+  }
+
   const record = state.data[state.activeView].find(item => item.id === id);
   if (record) showForm(record);
 }
@@ -2210,23 +2293,45 @@ async function handleSave(event) {
     payload.targetCompletionDate = parseDateKey(baselineDefaults.targetCompletionDate) || baselineDefaults.targetCompletionDate;
   }
   if (state.activeView === "testCases") {
-    payload.qa = currentLoggedInQaName() || payload.qa || baselineDefaults.qa;
     const existingRecord = state.editId
       ? state.data.testCases.find(record => record.id === state.editId)
       : null;
-    const currentUserName = currentLoggedInQaName();
+    const developerRemarksOnly = isDeveloperTestCaseRemarksOnly();
+    const submittedDeveloperRemarks = payload.developerRemarks;
+
+    if (developerRemarksOnly && !existingRecord) {
+      showMessageModal({
+        title: "Developer Remarks Only",
+        message: "Developers can update Developer Remarks on existing test cases only."
+      });
+      return;
+    }
+
+    if (developerRemarksOnly) {
+      Object.keys(payload).forEach(key => delete payload[key]);
+      Object.assign(payload, existingRecord, {
+        developerRemarks: submittedDeveloperRemarks
+      });
+    } else {
+      payload.qa = currentLoggedInQaName() || payload.qa || baselineDefaults.qa;
+    }
+
+    const currentUserName = currentLoggedInAccountName();
     const existingQaRemarks = String(existingRecord?.qaRemarks || existingRecord?.remarks || "").trim();
     const existingDeveloperRemarks = String(existingRecord?.developerRemarks || "").trim();
 
-    if (payload.qaRemarks) {
+    if (!developerRemarksOnly && payload.qaRemarks) {
       payload.qaRemarksBy = payload.qaRemarks === existingQaRemarks
         ? existingRecord?.qaRemarksBy || existingRecord?.qa || currentUserName
         : currentUserName;
     }
 
     if (payload.developerRemarks) {
+      payload.developer = payload.developerRemarks === existingDeveloperRemarks
+        ? existingRecord?.developer || existingRecord?.developerRemarksBy || currentUserName
+        : currentUserName;
       payload.developerRemarksBy = payload.developerRemarks === existingDeveloperRemarks
-        ? existingRecord?.developerRemarksBy || currentUserName
+        ? existingRecord?.developerRemarksBy || existingRecord?.developer || currentUserName
         : currentUserName;
     }
   }
@@ -2717,7 +2822,7 @@ function render(options = {}) {
       state.activeView !== "modificationForm" &&
       state.activeView !== "testCases"
   );
-  const canCreateInView = state.activeView !== "userManagement" || isCurrentAdmin();
+  const canCreateInView = canCreateInCurrentView();
   if (!options.keepFormOpen) {
     elements.recordFormPanel.classList.add("hidden");
   }
@@ -2856,9 +2961,13 @@ function render(options = {}) {
     setActionButtonContent(deleteBtn, "×", "Delete");
     deleteBtn.addEventListener("click", () => deleteRecord(record.id));
 
-    actionCell.append(editBtn);
+    if (canEditCurrentRecord()) {
+      actionCell.append(editBtn);
+    }
 
-    actionCell.append(deleteBtn);
+    if (canDeleteCurrentRecord()) {
+      actionCell.append(deleteBtn);
+    }
     row.append(actionCell);
     elements.recordRows.append(row);
   });
