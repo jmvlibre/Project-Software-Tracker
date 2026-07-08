@@ -3,6 +3,7 @@ const THEME_KEY = "directory-management-theme";
 const LOGIN_ATTEMPTS_KEY = "login-attempts-v1";
 const REMEMBER_ME_KEY = "remember-me-v1";
 const AUTH_SESSION_KEY = "auth-session-v1";
+const LOCAL_PENDING_SYNC_KEY = "directory-management-pending-sync-v1";
 const THEMES = ["maroonWhite", "maroonBlack", "blackWhite", "darkMode", "midnightSlate"];
 const DEFAULT_ADMIN_USERNAME = "admin";
 const DEFAULT_ADMIN_PASSWORD = "Project@2026";
@@ -75,7 +76,7 @@ const directoryViews = {
       { key: "details", label: "Modification Details", placeholder: "Modification details", type: "textarea", required: true },
       { key: "remarks", label: "Remarks", placeholder: "Remarks", type: "textarea" },
       { key: "attachmentName", label: "Attachment", type: "file", accept: "image/*,.pdf,.doc,.docx,.xls,.xlsx", table: false },
-      { key: "approvedBy", label: "Name and Signature", placeholder: "Name and signature" },
+      { key: "approvedBy", label: "Name", placeholder: "Approver name" },
       { key: "approvedPosition", label: "Position", placeholder: "Approver position" },
       { key: "approvedDateTime", label: "Approved Date / Time", type: "datetime-local" }
     ],
@@ -354,6 +355,68 @@ function normalizeDataShape(input) {
   return data;
 }
 
+function dataCollectionKeys() {
+  return [...Object.keys(directoryViews), "calendarTasks"];
+}
+
+function recordKey(record) {
+  return String(record?.id || "").trim();
+}
+
+function recordFingerprint(record) {
+  return JSON.stringify(record || {});
+}
+
+function mergeRemoteDataWithLocalAdditions(remoteInput, localInput) {
+  const remoteData = normalizeDataShape(remoteInput);
+  const localData = normalizeDataShape(localInput);
+  let changed = false;
+
+  dataCollectionKeys().forEach(key => {
+    const remoteRecords = remoteData[key] || [];
+    const remoteIds = new Set(remoteRecords.map(recordKey).filter(Boolean));
+    const remoteFingerprints = new Set(remoteRecords.map(recordFingerprint));
+    const localOnlyRecords = (localData[key] || []).filter(record => {
+      const id = recordKey(record);
+      return id ? !remoteIds.has(id) : !remoteFingerprints.has(recordFingerprint(record));
+    });
+
+    if (!localOnlyRecords.length) return;
+    remoteData[key] = [...localOnlyRecords, ...remoteRecords];
+    changed = true;
+  });
+
+  return { data: remoteData, changed };
+}
+
+function pendingLocalSyncToken() {
+  try {
+    return localStorage.getItem(LOCAL_PENDING_SYNC_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function markPendingLocalSync() {
+  try {
+    const token = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem(LOCAL_PENDING_SYNC_KEY, token);
+    return token;
+  } catch {
+    return "";
+  }
+}
+
+function clearPendingLocalSync(token) {
+  try {
+    if (!token || pendingLocalSyncToken() === token) {
+      localStorage.removeItem(LOCAL_PENDING_SYNC_KEY);
+    }
+  } catch {
+    // Local persistence may be unavailable in private or restricted browser sessions.
+  }
+}
+
 function saveLocalData() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state.data));
@@ -381,6 +444,7 @@ function formHasUnsavedInput() {
 }
 
 async function saveCloudData() {
+  const pendingToken = pendingLocalSyncToken();
   try {
     window.clearTimeout(cloudSaveTimer);
     cloudSaveTimer = null;
@@ -399,6 +463,7 @@ async function saveCloudData() {
     }
     const payload = await response.json();
     cloudLastUpdatedAt = payload.updatedAt || cloudLastUpdatedAt;
+    clearPendingLocalSync(pendingToken);
   } catch (error) {
     console.warn("Cloud sync is unavailable. Local changes are still saved.", error);
   }
@@ -412,7 +477,10 @@ function scheduleCloudSave() {
 
 function saveData() {
   saveLocalData();
-  if (!cloudApplyingRemoteData) scheduleCloudSave();
+  if (!cloudApplyingRemoteData) {
+    markPendingLocalSync();
+    scheduleCloudSave();
+  }
 }
 
 async function fetchCloudDataPayload() {
@@ -459,6 +527,7 @@ async function refreshModificationFormProjectFromCloud(projectName) {
 function applyRemoteData(payload) {
   if (!payload?.data) return;
   if (formHasUnsavedInput()) return;
+  if (pendingLocalSyncToken()) return;
 
   cloudApplyingRemoteData = true;
   try {
@@ -479,6 +548,11 @@ async function pollCloudData() {
   if (!cloudSyncReady) return;
 
   try {
+    if (pendingLocalSyncToken()) {
+      await saveCloudData();
+      return;
+    }
+
     const payload = await fetchCloudDataPayload();
     if (!payload.updatedAt || payload.updatedAt === cloudLastUpdatedAt) return;
     if (formHasUnsavedInput()) return;
@@ -498,16 +572,30 @@ function startCloudPolling() {
 
 async function hydrateCloudData() {
   try {
+    const localData = normalizeDataShape(state.data);
+    const hasPendingLocalChanges = Boolean(pendingLocalSyncToken());
     const payload = await fetchCloudDataPayload();
     cloudLastUpdatedAt = payload.updatedAt || cloudLastUpdatedAt;
     if (payload.data) {
-      state.data = normalizeDataShape(payload.data);
+      if (hasPendingLocalChanges) {
+        state.data = localData;
+      } else {
+        const merged = mergeRemoteDataWithLocalAdditions(payload.data, localData);
+        state.data = merged.data;
+        if (merged.changed) markPendingLocalSync();
+      }
       normalizeTestCaseStatuses();
       normalizeUserRoles();
       const authSession = getAuthSession();
       state.currentUser = authSession ? userByUsername(authSession.username) : null;
       saveLocalData();
       render();
+      if (hasPendingLocalChanges || pendingLocalSyncToken()) {
+        cloudSyncReady = true;
+        await saveCloudData();
+        startCloudPolling();
+        return;
+      }
     } else {
       cloudSyncReady = true;
       await saveCloudData();
@@ -1357,6 +1445,29 @@ function tableFieldGroups(viewKey, view) {
   };
 }
 
+function tableColumnClassNames(key) {
+  const normalizedKey = String(key || "").toLowerCase();
+  const classes = [];
+
+  if (normalizedKey === "id" || normalizedKey.endsWith("id")) {
+    classes.push("id-column", "nowrap-column");
+  }
+  if (normalizedKey.includes("date")) {
+    classes.push("date-column", "nowrap-column");
+  }
+  if (normalizedKey === "status") {
+    classes.push("status-column", "nowrap-column");
+  }
+  if (normalizedKey === "attachment") {
+    classes.push("attachment-column");
+  }
+  if (normalizedKey === "action") {
+    classes.push("action-column");
+  }
+
+  return classes;
+}
+
 function detailColumns(type) {
   if (type === "modification") {
     return [
@@ -1477,6 +1588,7 @@ function showDashboardDetailModal(title, records, type = "task") {
 
     columns.forEach(column => {
       const th = document.createElement("th");
+      th.classList.add(...tableColumnClassNames(column.key));
       th.textContent = column.label;
       headRow.append(th);
     });
@@ -1512,6 +1624,7 @@ function showDashboardDetailModal(title, records, type = "task") {
         const value = column.value(record) || "-";
         const title = typeof column.title === "function" ? column.title(record) : "";
 
+        cell.classList.add(...tableColumnClassNames(column.key));
         if (["details", "remarks", "qaRemarks", "developerRemarks", "featureDetails", "oldValue", "newValue"].includes(column.key)) {
           cell.classList.add("detail-text-cell", "multiline-text-cell");
           cell.classList.toggle("has-detail-value", value !== "-");
@@ -2445,15 +2558,19 @@ function renderTableHeader(view) {
   const row = document.createElement("tr");
   const fieldGroups = tableFieldGroups(state.activeView, view);
   const hasAttachments = view.fields.some(f => f.type === "file");
-  const columns = [view.idLabel, ...fieldGroups.beforeGenerated.map(field => field.label)];
-  if (view.generatedDateKey) columns.push(view.generatedDateLabel);
-  columns.push(...fieldGroups.afterGenerated.map(field => field.label));
-  if (hasAttachments) columns.push("Attachment");
-  columns.push("Action");
+  const columns = [
+    { key: "id", label: view.idLabel },
+    ...fieldGroups.beforeGenerated.map(field => ({ key: field.key, label: field.label }))
+  ];
+  if (view.generatedDateKey) columns.push({ key: view.generatedDateKey, label: view.generatedDateLabel });
+  columns.push(...fieldGroups.afterGenerated.map(field => ({ key: field.key, label: field.label })));
+  if (hasAttachments) columns.push({ key: "attachment", label: "Attachment" });
+  columns.push({ key: "action", label: "Action" });
 
   columns.forEach(column => {
     const th = document.createElement("th");
-    th.textContent = column;
+    th.classList.add(...tableColumnClassNames(column.key));
+    th.textContent = column.label;
     row.append(th);
   });
 
@@ -2923,23 +3040,25 @@ function render(options = {}) {
   records.forEach(record => {
     const row = document.createElement("tr");
     const cells = [
-      { value: record.id },
+      { key: "id", value: record.id },
       ...fieldGroups.beforeGenerated.map(field => ({ field, value: tableFieldValue(record, field) }))
     ];
-    if (view.generatedDateKey) cells.push({ value: record[view.generatedDateKey] });
+    if (view.generatedDateKey) cells.push({ key: view.generatedDateKey, value: record[view.generatedDateKey] });
     cells.push(...fieldGroups.afterGenerated.map(field => ({ field, value: tableFieldValue(record, field) })));
 
-    cells.forEach(({ field, value }) => {
+    cells.forEach(({ field, key, value }) => {
       const cell = document.createElement("td");
-      const remarkTitle = testCaseRemarkTooltip(record, field?.key);
+      const columnKey = field?.key || key;
+      const remarkTitle = testCaseRemarkTooltip(record, columnKey);
+      cell.classList.add(...tableColumnClassNames(columnKey));
       if (
         field?.type === "textarea" ||
-        ["details", "remarks", "qaRemarks", "developerRemarks"].includes(field?.key)
+        ["details", "remarks", "qaRemarks", "developerRemarks"].includes(columnKey)
       ) {
         cell.classList.add("multiline-text-cell");
       }
       setCellTooltip(cell, remarkTitle, value);
-      if (field?.key === "status") {
+      if (columnKey === "status") {
         cell.textContent = "";
         const badge = document.createElement("span");
         badge.className = `status-badge status-${statusClass(value)}`;
@@ -2956,6 +3075,7 @@ function render(options = {}) {
     if (hasAttachments) {
       // Dedicated Attachment Column
       const attachmentCell = document.createElement("td");
+      attachmentCell.classList.add(...tableColumnClassNames("attachment"));
       const isImage = isImageAttachment(record);
 
       if (isImage) {
@@ -2995,6 +3115,7 @@ function render(options = {}) {
 
     const actionCell = document.createElement("td");
     actionCell.className = "action-cell";
+    actionCell.classList.add(...tableColumnClassNames("action"));
 
     const editBtn = document.createElement("button");
     editBtn.className = "secondary";
@@ -3384,7 +3505,7 @@ async function approveModificationFormFromLink() {
   const approvedBy = elements.approvalNameInput.value.trim();
   const approvedPosition = elements.approvalPositionInput.value.trim();
   if (!approvedBy || !approvedPosition) {
-    elements.approvalStatus.textContent = "Enter the approver name/signature and position before approving.";
+    elements.approvalStatus.textContent = "Enter the approver name and position before approving.";
     return;
   }
 
@@ -4064,7 +4185,7 @@ function modificationFormHtml(recordOrRecords, options = {}) {
     <p class="approval">Approved by:</p>
     <table class="approval-table">
       <tr>
-        <th class="approval-name">Name and Signature</th>
+        <th class="approval-name">Name</th>
         <th class="approval-position">Position</th>
         <th class="approval-date">Date</th>
       </tr>
@@ -4092,6 +4213,327 @@ function downloadModificationWord(record) {
   URL.revokeObjectURL(link.href);
 }
 
+function pdfText(value) {
+  return String(value || "")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\u00A0/g, " ")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E]/g, "?");
+}
+
+function escapePdfString(value) {
+  return pdfText(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\(/g, "\\(")
+    .replace(/\)/g, "\\)")
+    .replace(/\r\n|\r|\n/g, "\\n");
+}
+
+function estimatePdfTextWidth(value, fontSize) {
+  return pdfText(value).split("").reduce((width, character) => {
+    if (character === " ") return width + fontSize * 0.25;
+    if ("ilI.,'|!".includes(character)) return width + fontSize * 0.22;
+    if ("mwMW@#%&".includes(character)) return width + fontSize * 0.76;
+    return width + fontSize * 0.48;
+  }, 0);
+}
+
+function wrapPdfText(value, maxWidth, fontSize) {
+  const paragraphs = pdfText(value).split(/\r\n|\r|\n/);
+  const lines = [];
+
+  paragraphs.forEach(paragraph => {
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) {
+      lines.push("");
+      return;
+    }
+
+    let currentLine = "";
+    words.forEach(word => {
+      const candidate = currentLine ? `${currentLine} ${word}` : word;
+      if (estimatePdfTextWidth(candidate, fontSize) <= maxWidth) {
+        currentLine = candidate;
+        return;
+      }
+
+      if (currentLine) lines.push(currentLine);
+      currentLine = word;
+
+      while (estimatePdfTextWidth(currentLine, fontSize) > maxWidth && currentLine.length > 1) {
+        let cut = currentLine.length - 1;
+        while (cut > 1 && estimatePdfTextWidth(`${currentLine.slice(0, cut)}-`, fontSize) > maxWidth) cut -= 1;
+        lines.push(`${currentLine.slice(0, cut)}-`);
+        currentLine = currentLine.slice(cut);
+      }
+    });
+
+    lines.push(currentLine);
+  });
+
+  return lines.length ? lines : [""];
+}
+
+function modificationPdfData(recordOrRecords) {
+  const records = Array.isArray(recordOrRecords)
+    ? recordOrRecords
+    : [recordOrRecords].filter(Boolean);
+  const firstRecord = records[0] || {};
+  const projectRecords = firstRecord?.projectName
+    ? projectModificationFormRecords(firstRecord.projectName)
+    : records;
+  const detailRows = records.length
+    ? records.map((record, index) => ({
+        no: String(index + 1),
+        details: String(record?.details || "").trim(),
+        remarks: approvalRemarksText(record)
+      }))
+    : [{ no: "1", details: "", remarks: "" }];
+  while (detailRows.length < 3) {
+    detailRows.push({ no: String(detailRows.length + 1), details: "", remarks: "" });
+  }
+
+  const approvals = approvalList(projectRecords);
+  return {
+    projectName: firstRecord?.projectName || state.modificationProject || "",
+    requestorName: firstRecord?.requested || "",
+    clientDepartment: firstRecord ? recordClientDepartment(firstRecord) : "",
+    targetCompletionDate: firstRecord
+      ? compactFormDate(firstRecord?.targetCompletionDate || firstRecord?.dateModified)
+      : "",
+    detailRows,
+    attachmentRows: records
+      .map((record, index) => ({
+        no: String(index + 1),
+        name: String(record?.attachmentName || "").trim()
+      }))
+      .filter(row => row.name),
+    approvalRows: approvals.length
+      ? approvals.map(approval => ({
+          name: approval.name || "",
+          position: approval.position || "",
+          date: formatApprovalTimestamp(approval.approvedDateTime || "")
+        }))
+      : [{ name: "", position: "", date: "" }]
+  };
+}
+
+function buildPdfDocument(pageContents) {
+  const pageWidth = 841.89;
+  const pageHeight = 595.28;
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>"
+  ];
+  const pageRefs = [];
+
+  pageContents.forEach((content, index) => {
+    const pageObjectId = 5 + index * 2;
+    const contentObjectId = pageObjectId + 1;
+    pageRefs.push(`${pageObjectId} 0 R`);
+    objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${pageWidth} ${pageHeight}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents ${contentObjectId} 0 R >>`);
+    objects.push(`<< /Length ${content.length} >>\nstream\n${content}\nendstream`);
+  });
+
+  objects[1] = `<< /Type /Pages /Kids [${pageRefs.join(" ")}] /Count ${pageRefs.length} >>`;
+
+  let pdf = "%PDF-1.4\n%PDFGEN\n";
+  const offsets = [0];
+  objects.forEach((object, index) => {
+    offsets.push(pdf.length);
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  });
+
+  const xrefOffset = pdf.length;
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  offsets.slice(1).forEach(offset => {
+    pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
+  });
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF`;
+  return pdf;
+}
+
+function createModificationPdfBlob(recordOrRecords) {
+  const data = modificationPdfData(recordOrRecords);
+  const pageWidth = 841.89;
+  const pageHeight = 595.28;
+  const margin = 34;
+  const contentWidth = pageWidth - margin * 2;
+  const pageContents = [];
+  let commands = [];
+  let y = pageHeight - margin;
+
+  const number = value => Number(value).toFixed(2);
+  const add = command => commands.push(command);
+  const rect = (x, top, width, height, fill = false) => {
+    const bottom = top - height;
+    if (fill) add(`q 0.94 g ${number(x)} ${number(bottom)} ${number(width)} ${number(height)} re f Q`);
+    add(`${number(x)} ${number(bottom)} ${number(width)} ${number(height)} re S`);
+  };
+  const textLine = (text, x, baseline, fontSize = 9, bold = false) => {
+    add(`BT /${bold ? "F2" : "F1"} ${number(fontSize)} Tf 1 0 0 1 ${number(x)} ${number(baseline)} Tm (${escapePdfString(text)}) Tj ET`);
+  };
+  const centeredText = (text, x, top, width, height, fontSize = 9, bold = false) => {
+    const lineWidth = estimatePdfTextWidth(text, fontSize);
+    textLine(text, x + Math.max(4, (width - lineWidth) / 2), top - height / 2 - fontSize / 3, fontSize, bold);
+  };
+  const drawCellText = (text, x, top, width, height, options = {}) => {
+    const fontSize = options.fontSize || 9;
+    const padding = options.padding || 5;
+    const lineHeight = fontSize + 2;
+    const lines = wrapPdfText(text, width - padding * 2, fontSize);
+    let lineY = top - padding - fontSize;
+    lines.slice(0, Math.max(1, Math.floor((height - padding * 2) / lineHeight))).forEach(line => {
+      if (options.align === "center") {
+        const lineWidth = estimatePdfTextWidth(line, fontSize);
+        textLine(line, x + Math.max(padding, (width - lineWidth) / 2), lineY, fontSize, options.bold);
+      } else {
+        textLine(line, x + padding, lineY, fontSize, options.bold);
+      }
+      lineY -= lineHeight;
+    });
+  };
+  const finishPage = () => {
+    pageContents.push(["0 G", "0 g", "0.6 w", ...commands].join("\n"));
+    commands = [];
+    y = pageHeight - margin;
+  };
+  const newPage = () => {
+    finishPage();
+    textLine("MODIFICATION FORM (continued)", margin, y - 12, 11, true);
+    y -= 28;
+  };
+  const ensureSpace = height => {
+    if (y - height < margin) newPage();
+  };
+  const tableRow = cells => {
+    const fontSize = 9;
+    const padding = 5;
+    const lineHeight = fontSize + 2;
+    const rowHeight = Math.max(
+      22,
+      ...cells.map(cell => {
+        const lines = wrapPdfText(cell.text, cell.width - padding * 2, fontSize);
+        return lines.length * lineHeight + padding * 2;
+      })
+    );
+
+    ensureSpace(rowHeight);
+    let x = margin;
+    cells.forEach(cell => {
+      rect(x, y, cell.width, rowHeight, cell.header);
+      drawCellText(cell.text, x, y, cell.width, rowHeight, {
+        align: cell.align,
+        bold: cell.bold || cell.header,
+        fontSize
+      });
+      x += cell.width;
+    });
+    y -= rowHeight;
+  };
+
+  const colA = 260;
+  const colB = 255;
+  const colC = 110;
+  const colD = contentWidth - colA - colB - colC;
+  const headerRowHeight = 54;
+
+  rect(margin, y, colA, headerRowHeight * 2);
+  ["Virginia Food Inc.", "6000 Osmena Boulevard", "Cebu, Cebu 6000, PH", "Information System"].forEach((line, index) => {
+    textLine(line, margin + 18, y - 24 - index * 14, 10);
+  });
+  rect(margin + colA, y, colB, headerRowHeight);
+  rect(margin + colA + colB, y, colC, headerRowHeight);
+  rect(margin + colA + colB + colC, y, colD, headerRowHeight);
+  centeredText("APPLICATION DEVELOPMENT", margin + colA, y, colB, headerRowHeight, 10);
+  drawCellText("Rev. No. 01", margin + colA + colB, y, colC, headerRowHeight, { fontSize: 9 });
+  drawCellText("FIN-IT-APPDEV-FORM-02", margin + colA + colB + colC, y, colD, headerRowHeight, { fontSize: 9 });
+  y -= headerRowHeight;
+  rect(margin + colA, y, colB, headerRowHeight);
+  rect(margin + colA + colB, y, colC, headerRowHeight);
+  rect(margin + colA + colB + colC, y, colD, headerRowHeight);
+  centeredText("MODIFICATION FORM", margin + colA, y, colB, headerRowHeight, 10, true);
+  drawCellText("Revision Date:\n01JAN2026", margin + colA + colB, y, colC, headerRowHeight, { fontSize: 9 });
+  drawCellText("Effectivity Date:\n01JAN2026", margin + colA + colB + colC, y, colD, headerRowHeight, { fontSize: 9 });
+  y -= headerRowHeight + 18;
+
+  tableRow([
+    { text: "Field", width: 145, header: true },
+    { text: "Details", width: contentWidth - 145, header: true }
+  ]);
+  [
+    ["Project Name:", data.projectName],
+    ["Requestor Name:", data.requestorName],
+    ["Client / Department:", data.clientDepartment],
+    ["Target Completion Date:", data.targetCompletionDate]
+  ].forEach(([label, value]) => tableRow([
+    { text: label, width: 145, bold: true },
+    { text: value, width: contentWidth - 145 }
+  ]));
+  y -= 18;
+
+  tableRow([
+    { text: "No.", width: 54, header: true, align: "center" },
+    { text: "Modification Details", width: 360, header: true, align: "center" },
+    { text: "Remarks", width: contentWidth - 414, header: true, align: "center" }
+  ]);
+  data.detailRows.forEach(row => tableRow([
+    { text: row.no, width: 54, align: "center" },
+    { text: row.details, width: 360 },
+    { text: row.remarks, width: contentWidth - 414 }
+  ]));
+
+  if (data.attachmentRows.length) {
+    y -= 18;
+    tableRow([
+      { text: "No.", width: 54, header: true, align: "center" },
+      { text: "Uploaded Attachment", width: contentWidth - 54, header: true }
+    ]);
+    data.attachmentRows.forEach(row => tableRow([
+      { text: row.no, width: 54, align: "center" },
+      { text: row.name, width: contentWidth - 54, bold: true }
+    ]));
+  }
+
+  y -= 22;
+  ensureSpace(76);
+  textLine("Approved by:", margin, y, 10, true);
+  y -= 10;
+  tableRow([
+    { text: "Name", width: contentWidth * 0.44, header: true },
+    { text: "Position", width: contentWidth * 0.26, header: true },
+    { text: "Date", width: contentWidth * 0.30, header: true }
+  ]);
+  data.approvalRows.forEach(row => tableRow([
+    { text: row.name, width: contentWidth * 0.44 },
+    { text: row.position, width: contentWidth * 0.26 },
+    { text: row.date, width: contentWidth * 0.30 }
+  ]));
+
+  finishPage();
+  return new Blob([buildPdfDocument(pageContents)], { type: "application/pdf" });
+}
+
+async function downloadModificationPdf(record) {
+  const records = Array.isArray(record) ? record : [record].filter(Boolean);
+  if (!records.length) return;
+
+  const blob = createModificationPdfBlob(records);
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = documentFileName(records, "pdf");
+  link.rel = "noopener";
+  link.style.display = "none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 30000);
+}
+
 function printModificationPdf(record) {
   const records = Array.isArray(record) ? record : [record].filter(Boolean);
   const printWindow = window.open("", "_blank");
@@ -4100,10 +4542,11 @@ function printModificationPdf(record) {
       title: "Pop-ups Blocked",
       message: "Please allow pop-ups to generate the PDF form."
     });
-    return;
+    return false;
   }
 
   writeModificationPdfToWindow(printWindow, records);
+  return true;
 }
 
 function openModificationPdfPreview(record) {
@@ -4445,9 +4888,27 @@ elements.exportWordBtn?.addEventListener("click", async () => {
   if (records.length) downloadModificationWord(records);
 });
 elements.exportPdfBtn?.addEventListener("click", async () => {
-  await refreshModificationFormProjectFromCloud(state.modificationProject);
-  const records = modificationFormDocumentRecords();
-  if (records.length) printModificationPdf(records);
+  const originalText = elements.exportPdfBtn.textContent;
+  let records = [];
+  elements.exportPdfBtn.disabled = true;
+  elements.exportPdfBtn.textContent = "Downloading...";
+  try {
+    await refreshModificationFormProjectFromCloud(state.modificationProject);
+    records = modificationFormDocumentRecords();
+    if (records.length) await downloadModificationPdf(records);
+  } catch (error) {
+    console.error("PDF download failed", error);
+    const fallbackOpened = records.length ? printModificationPdf(records) : false;
+    showMessageModal({
+      title: fallbackOpened ? "PDF Opened for Saving" : "PDF Download Failed",
+      message: fallbackOpened
+        ? "The direct download was blocked, so the printable PDF form was opened instead. Choose Save as PDF in the print dialog."
+        : "The PDF file could not be prepared. Please try Export PDF again."
+    });
+  } finally {
+    elements.exportPdfBtn.disabled = false;
+    elements.exportPdfBtn.textContent = originalText;
+  }
 });
 elements.approvalProjectLinkBtn?.addEventListener("click", copyApprovalLink);
 elements.approveFormBtn?.addEventListener("click", approveModificationFormFromLink);

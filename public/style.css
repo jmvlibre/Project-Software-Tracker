@@ -2953,6 +2953,32 @@ td {
   word-break: normal;
 }
 
+.nowrap-column {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+th.id-column,
+td.id-column {
+  min-width: 86px;
+}
+
+th.date-column,
+td.date-column {
+  min-width: 98px;
+}
+
+th.status-column,
+td.status-column {
+  min-width: 92px;
+}
+
+th.attachment-column,
+td.attachment-column {
+  min-width: 104px;
+}
+
 .multiline-text-cell {
   line-height: 1.45;
   text-align: left;
@@ -3754,12 +3780,37 @@ tbody tr:last-child td {
 
 #dashboardDetailModal .detail-table {
   width: 100%;
-  min-width: 1080px;
+  min-width: max(1180px, 100%);
+  table-layout: auto;
 }
 
 #dashboardDetailModal .detail-table th,
 #dashboardDetailModal .detail-table td {
   padding: 16px 18px;
+}
+
+#dashboardDetailModal .detail-table .id-column {
+  width: 96px;
+  min-width: 96px;
+}
+
+#dashboardDetailModal .detail-table .date-column {
+  width: 112px;
+  min-width: 112px;
+}
+
+#dashboardDetailModal .detail-table .status-column {
+  width: 96px;
+  min-width: 96px;
+}
+
+#dashboardDetailModal .detail-table .attachment-column {
+  width: 116px;
+  min-width: 116px;
+}
+
+#dashboardDetailModal .detail-table .detail-text-cell {
+  min-width: 240px;
 }
 
 #dashboardDetailModal .attachment-link,
@@ -9130,6 +9181,37 @@ tbody tr:hover td {
 
 .action-cell {
   width: 128px;
+}
+
+th.nowrap-column,
+td.nowrap-column {
+  overflow-wrap: normal;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+th.id-column,
+td.id-column {
+  min-width: 86px;
+}
+
+th.date-column,
+td.date-column {
+  min-width: 98px;
+}
+
+th.status-column,
+td.status-column {
+  min-width: 92px;
+}
+
+th.attachment-column,
+td.attachment-column {
+  min-width: 104px;
+}
+
+td.action-cell {
+  white-space: nowrap;
 }
 
 .action-cell button {
