@@ -10454,29 +10454,12 @@ body[data-view="approval"] .app-layout {
 }
 
 body[data-view="approval"] .sidebar,
-body[data-view="approval"] .app-header .header-utility {
+body[data-view="approval"] .app-header {
   display: none;
 }
 
 body[data-view="approval"] .page-shell {
   padding: 24px;
-}
-
-body[data-view="approval"] .app-header {
-  max-width: 680px;
-  margin: 0 auto;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 16px 0 0;
-}
-
-body[data-view="approval"] .app-header h1 {
-  color: var(--primary);
-  font-size: 0.78rem;
-  font-weight: 900;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
 /* Keep regular directory tables fitted; only wide work tables scroll horizontally. */
@@ -10529,5 +10512,382 @@ td.action-cell button {
   min-width: 38px;
   margin: 0 6px 0 0;
   padding: 0 10px;
+}
+
+/* Approval route surface: same layout across themes, colors follow the active theme. */
+body[data-view="approval"] {
+  --approval-accent: var(--primary);
+  --approval-bg: color-mix(in srgb, var(--bg) 88%, var(--primary) 12%);
+  --approval-card: color-mix(in srgb, var(--panel) 92%, var(--primary) 8%);
+  --approval-card-soft: color-mix(in srgb, var(--surface) 88%, var(--primary) 12%);
+  --approval-line: color-mix(in srgb, var(--primary) 34%, var(--line));
+  --approval-text: var(--text);
+  --approval-muted: var(--muted);
+  --approval-field: color-mix(in srgb, var(--field-bg) 86%, var(--primary) 8%);
+  background: var(--approval-bg);
+}
+
+body[data-theme="darkMode"][data-view="approval"],
+body[data-theme="midnightSlate"][data-view="approval"],
+body[data-theme="maroonBlack"][data-view="approval"] {
+  --approval-accent: #38bdf8;
+  --approval-bg: radial-gradient(circle at 50% 0, #12233c 0, #081527 42%, #06101e 100%);
+  --approval-card: rgba(8, 20, 38, 0.88);
+  --approval-card-soft: rgba(14, 33, 58, 0.78);
+  --approval-line: rgba(91, 145, 198, 0.72);
+  --approval-text: #f5f8ff;
+  --approval-muted: #b7c6d8;
+  --approval-field: rgba(8, 19, 36, 0.92);
+  color-scheme: dark;
+}
+
+body[data-view="approval"] .page-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: start center;
+  padding: clamp(12px, 2vw, 24px);
+}
+
+body[data-view="approval"] .approval-panel {
+  display: grid;
+  width: min(680px, 100%);
+  min-height: 0;
+  padding: 0;
+}
+
+body[data-view="approval"] .approval-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 20px;
+  width: 100%;
+  border: 1px solid var(--approval-line);
+  border-radius: 8px;
+  background: var(--approval-card);
+  box-shadow: 0 22px 58px color-mix(in srgb, var(--primary) 18%, transparent);
+  padding: 24px;
+}
+
+body[data-view="approval"] .approval-kicker,
+body[data-view="approval"] .approval-card h2,
+body[data-view="approval"] .approval-guidelines,
+body[data-view="approval"] .approval-card > label,
+body[data-view="approval"] .approval-remarks-section,
+body[data-view="approval"] .approval-status {
+  grid-column: 1 / -1;
+}
+
+body[data-view="approval"] .approval-kicker {
+  color: var(--approval-accent);
+  font-size: 0.76rem;
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+
+body[data-view="approval"] .approval-card h2 {
+  margin: 0;
+  padding-right: 148px;
+  color: var(--approval-text);
+  font-size: clamp(1.35rem, 2.4vw, 1.75rem);
+  line-height: 1.15;
+}
+
+body[data-view="approval"] .approval-preview-wrap {
+  position: absolute;
+  top: 48px;
+  right: 24px;
+  min-width: 0;
+}
+
+body[data-view="approval"] .approval-preview-header {
+  display: block;
+}
+
+body[data-view="approval"] .approval-preview-header span,
+body[data-view="approval"] .approval-pdf-prompt {
+  display: none;
+}
+
+body[data-view="approval"] #approvalPreviewPdfBtn {
+  min-height: 42px;
+  border: 1px solid color-mix(in srgb, var(--approval-accent) 78%, #ffffff);
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--approval-accent) 92%, #ffffff), var(--approval-accent));
+  color: #ffffff;
+  padding: 0 18px;
+  box-shadow: 0 12px 22px color-mix(in srgb, var(--approval-accent) 30%, transparent);
+  font-weight: 900;
+}
+
+body[data-view="approval"] .approval-card::after {
+  content: "";
+  grid-column: 1 / -1;
+  height: 1px;
+  margin: 8px 0 4px;
+  background: var(--approval-line);
+}
+
+body[data-view="approval"] .approval-guidelines {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--approval-line);
+  border-radius: 8px;
+  background: var(--approval-card-soft);
+  padding: 18px;
+}
+
+body[data-view="approval"] .approval-guidelines-icon {
+  width: 36px;
+  height: 36px;
+  flex-basis: 36px;
+  background: var(--approval-accent);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--approval-accent) 28%, transparent);
+}
+
+body[data-view="approval"] .approval-guidelines h3,
+body[data-view="approval"] .approval-remarks-header h3 {
+  color: var(--approval-text);
+}
+
+body[data-view="approval"] .approval-guidelines p,
+body[data-view="approval"] .approval-guidelines ol,
+body[data-view="approval"] .approval-remarks-detail {
+  color: var(--approval-text);
+}
+
+body[data-view="approval"] .approval-guidelines p,
+body[data-view="approval"] .approval-remarks-header span {
+  color: var(--approval-muted);
+}
+
+body[data-view="approval"] .approval-guidelines ol {
+  list-style: none;
+  counter-reset: approval-step;
+  padding-left: 38px;
+}
+
+body[data-view="approval"] .approval-guidelines li {
+  position: relative;
+  min-height: 24px;
+  counter-increment: approval-step;
+}
+
+body[data-view="approval"] .approval-guidelines li::before {
+  content: counter(approval-step);
+  position: absolute;
+  left: -34px;
+  top: 0;
+  display: inline-grid;
+  width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--approval-accent);
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 900;
+}
+
+body[data-view="approval"] .approval-card label span,
+body[data-view="approval"] .approval-remarks-select > span,
+body[data-view="approval"] .approval-remarks-input > span {
+  color: var(--approval-text);
+  font-weight: 900;
+}
+
+body[data-view="approval"] .approval-card input,
+body[data-view="approval"] .approval-card select,
+body[data-view="approval"] .approval-card textarea {
+  border-color: var(--approval-line);
+  background: var(--approval-field);
+  color: var(--approval-text);
+}
+
+body[data-view="approval"] .approval-card input::placeholder,
+body[data-view="approval"] .approval-card textarea::placeholder {
+  color: color-mix(in srgb, var(--approval-muted) 78%, transparent);
+}
+
+body[data-view="approval"] .approval-remarks-header {
+  border: 0;
+  padding-bottom: 0;
+}
+
+body[data-view="approval"] .approval-remarks-header span {
+  color: var(--approval-accent);
+}
+
+body[data-view="approval"] .approval-remarks-editor {
+  border-color: var(--approval-line);
+  background: transparent;
+  padding: 14px;
+}
+
+body[data-view="approval"] .approval-remarks-detail {
+  border-color: var(--approval-line);
+  background: color-mix(in srgb, var(--approval-accent) 10%, var(--approval-field));
+}
+
+body[data-view="approval"] .approval-remarks-history {
+  border-color: color-mix(in srgb, var(--approval-accent) 42%, var(--approval-line));
+  background: color-mix(in srgb, var(--approval-card-soft) 88%, transparent);
+  color: var(--approval-muted);
+}
+
+body[data-view="approval"] .approval-status {
+  color: var(--approval-accent);
+}
+
+body[data-view="approval"] .approval-card .form-actions {
+  grid-column: 1 / -1;
+  justify-content: flex-end;
+  padding: 0;
+}
+
+body[data-view="approval"] #approveFormBtn {
+  min-width: 128px;
+  min-height: 46px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--approval-accent) 86%, #ffffff), var(--approval-accent));
+  color: #ffffff;
+  box-shadow: 0 12px 24px color-mix(in srgb, var(--approval-accent) 26%, transparent);
+}
+
+@media (max-width: 620px) {
+  body[data-view="approval"] .approval-card {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  body[data-view="approval"] .approval-card h2 {
+    padding-right: 0;
+  }
+
+  body[data-view="approval"] .approval-preview-wrap {
+    position: static;
+    grid-column: 1 / -1;
+    grid-row: auto;
+    justify-self: start;
+  }
+}
+
+/* Approval typography polish. */
+body[data-view="approval"],
+body[data-view="approval"] button,
+body[data-view="approval"] input,
+body[data-view="approval"] select,
+body[data-view="approval"] textarea {
+  font-family: "Segoe UI Variable Text", "Segoe UI", Arial, sans-serif;
+  letter-spacing: 0;
+  text-rendering: geometricPrecision;
+}
+
+body[data-view="approval"] .approval-card {
+  gap: 16px 22px;
+}
+
+body[data-view="approval"] .approval-kicker {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+body[data-view="approval"] .approval-card h2 {
+  max-width: 440px;
+  font-size: clamp(1.35rem, 2vw, 1.72rem);
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.18;
+}
+
+body[data-view="approval"] #approvalPreviewPdfBtn,
+body[data-view="approval"] #approveFormBtn {
+  font-size: 0.9rem;
+  font-weight: 750;
+  letter-spacing: 0;
+}
+
+body[data-view="approval"] .approval-guidelines h3,
+body[data-view="approval"] .approval-remarks-header h3 {
+  font-size: 1rem;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1.25;
+}
+
+body[data-view="approval"] .approval-guidelines p {
+  font-size: 0.84rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+body[data-view="approval"] .approval-guidelines ol {
+  gap: 10px;
+  font-size: 0.86rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+body[data-view="approval"] .approval-guidelines li::before {
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+body[data-view="approval"] .approval-card label span,
+body[data-view="approval"] .approval-remarks-select > span,
+body[data-view="approval"] .approval-remarks-input > span,
+body[data-view="approval"] .approval-remarks-header span {
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+body[data-view="approval"] .approval-card input,
+body[data-view="approval"] .approval-card select,
+body[data-view="approval"] .approval-card textarea {
+  font-size: 0.92rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+body[data-view="approval"] .approval-card input::placeholder,
+body[data-view="approval"] .approval-card textarea::placeholder {
+  font-weight: 600;
+}
+
+body[data-view="approval"] .approval-remarks-detail,
+body[data-view="approval"] .approval-remarks-history {
+  font-size: 0.86rem;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+body[data-view="approval"] .approval-status {
+  font-size: 0.9rem;
+  font-weight: 750;
+  line-height: 1.35;
+}
+
+body[data-view="approval"] .approval-card h2 {
+  max-width: none;
+  padding-right: 112px;
+  font-size: clamp(1.28rem, 1.65vw, 1.58rem);
+  white-space: nowrap;
+}
+
+body[data-view="approval"] .approval-preview-wrap {
+  top: 44px;
+}
+
+body[data-view="approval"] #approvalPreviewPdfBtn {
+  min-height: 38px;
+  padding: 0 16px;
+}
+
+@media (max-width: 620px) {
+  body[data-view="approval"] .approval-card h2 {
+    white-space: normal;
+  }
 }
 

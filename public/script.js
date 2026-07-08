@@ -13,13 +13,17 @@ const REMEMBER_ME_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const AUTH_SESSION_DURATION_MS = 12 * 60 * 60 * 1000; // 12 hours
 const CLOUD_DATA_ENDPOINT = "/api/data";
 const CLOUD_SAVE_DELAY_MS = 800;
-const CLOUD_POLL_INTERVAL_MS = 3000;
+const CLOUD_POLL_INTERVAL_MS = 60000;
+const CLOUD_RETRY_BASE_DELAY_MS = 2 * 60 * 1000;
+const CLOUD_RETRY_MAX_DELAY_MS = 15 * 60 * 1000;
 const CLOUD_CLIENT_ID_KEY = "directory-management-client-id";
 let cloudSyncReady = false;
 let cloudSaveTimer = null;
 let cloudPollTimer = null;
 let cloudLastUpdatedAt = null;
 let cloudApplyingRemoteData = false;
+let cloudPollFailureCount = 0;
+let cloudPollPausedUntil = 0;
 let saveMessageTimer = null;
 let approvalRouteProject = null;
 let approvalFormViewed = false;
@@ -546,14 +550,20 @@ function applyRemoteData(payload) {
 
 async function pollCloudData() {
   if (!cloudSyncReady) return;
+  if (document.hidden) return;
+  if (Date.now() < cloudPollPausedUntil) return;
 
   try {
     if (pendingLocalSyncToken()) {
       await saveCloudData();
+      cloudPollFailureCount = 0;
+      cloudPollPausedUntil = 0;
       return;
     }
 
     const payload = await fetchCloudDataPayload();
+    cloudPollFailureCount = 0;
+    cloudPollPausedUntil = 0;
     if (!payload.updatedAt || payload.updatedAt === cloudLastUpdatedAt) return;
     if (formHasUnsavedInput()) return;
 
@@ -561,6 +571,12 @@ async function pollCloudData() {
     if (payload.updatedBy === currentCloudClientId()) return;
     applyRemoteData(payload);
   } catch (error) {
+    cloudPollFailureCount += 1;
+    const retryDelay = Math.min(
+      CLOUD_RETRY_MAX_DELAY_MS,
+      CLOUD_RETRY_BASE_DELAY_MS * (2 ** Math.min(cloudPollFailureCount - 1, 3))
+    );
+    cloudPollPausedUntil = Date.now() + retryDelay;
     console.warn("Realtime cloud refresh is unavailable.", error);
   }
 }
@@ -568,6 +584,11 @@ async function pollCloudData() {
 function startCloudPolling() {
   window.clearInterval(cloudPollTimer);
   cloudPollTimer = window.setInterval(pollCloudData, CLOUD_POLL_INTERVAL_MS);
+}
+
+function pollCloudDataOnVisibleTab() {
+  if (document.hidden) return;
+  pollCloudData();
 }
 
 async function hydrateCloudData() {
@@ -604,6 +625,8 @@ async function hydrateCloudData() {
     }
   } catch (error) {
     console.warn("Cloud data is unavailable. Using local browser data.", error);
+    cloudSyncReady = false;
+    return;
   }
 
   cloudSyncReady = true;
@@ -5106,6 +5129,8 @@ elements.todayCalendarBtn.addEventListener("click", () => {
   state.calendarSelectedDate = new Date();
   renderCalendar();
 });
+document.addEventListener("visibilitychange", pollCloudDataOnVisibleTab);
+window.addEventListener("focus", pollCloudDataOnVisibleTab);
 saveLocalData();
 applyTheme(localStorage.getItem(THEME_KEY) || "maroonWhite");
 updateClock();
