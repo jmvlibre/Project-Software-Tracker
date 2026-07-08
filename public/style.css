@@ -10479,3 +10479,55 @@ body[data-view="approval"] .app-header h1 {
   text-transform: uppercase;
 }
 
+/* Keep regular directory tables fitted; only wide work tables scroll horizontally. */
+body:not([data-view="dashboard"]) .table-wrap {
+  overflow-x: hidden;
+  overflow-y: hidden;
+  scrollbar-gutter: auto;
+}
+
+body[data-view="modification"] .table-wrap,
+body[data-view="modificationForm"] .table-wrap,
+body[data-view="testCases"] .table-wrap {
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+body:not([data-view="modification"]):not([data-view="modificationForm"]):not([data-view="testCases"]) table {
+  min-width: 0;
+  table-layout: fixed;
+}
+
+body[data-view="modification"] table,
+body[data-view="modificationForm"] table,
+body[data-view="testCases"] table {
+  min-width: max(1120px, 100%);
+  table-layout: auto;
+}
+
+table th {
+  overflow-wrap: normal;
+  text-overflow: clip;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+body[data-view="modification"] table th,
+body[data-view="modificationForm"] table th,
+body[data-view="testCases"] table th {
+  min-width: max-content;
+}
+
+td.action-cell {
+  width: 96px;
+  min-width: 96px;
+  white-space: nowrap;
+}
+
+td.action-cell button {
+  width: auto;
+  min-width: 38px;
+  margin: 0 6px 0 0;
+  padding: 0 10px;
+}
+
